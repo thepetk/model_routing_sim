@@ -6,6 +6,7 @@ import random
 from collections import deque
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import osmnx as ox
@@ -19,6 +20,9 @@ logger = logging.getLogger("logger")
 # CITY: The chosen city that the graph represents
 CITY = os.getenv("CITY", "San Cristóbal de La Laguna, Canary Islands, Spain")
 
+# COUNT_R_VALUES: The number of R values
+COUNT_R_VALUES = int(os.getenv("COUNT_R_VALUES", 20))
+
 # NUM_TIMESTEPS: The number of total timesteps
 NUM_TIMESTEPS = int(os.getenv("NUM_TIMESTEPS", 1000))
 
@@ -28,10 +32,12 @@ OX_LOG_CONSOLE = bool(int(os.getenv("OX_LOG_CONSOLE", 0)))
 # OX_USE_CACHE: [1/0] If 1 osmnx will use cache.
 OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
 
-
 # R: The average entrance of vehicles in the network
 # per time step per node.
-R = int(os.getenv("RHO", 20))
+R_VALUES = np.arange(0.01, 1, 0.01)
+
+# R_REPETITIONS: The number of repetitions per R value
+R_REPETITIONS = int(os.getenv("R_REPETITIONS", 10))
 
 # ROUTING_STRATEGY: ["shortest"/"random"] selects the routing strategy
 # for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"].
@@ -47,7 +53,7 @@ VEHICLE_ROUTER_STRATEGY = get_vehicle_router_strategy(ROUTING_STRATEGY)
 
 # STATIONARY_RATIO: The ratio of the timesteps that have to run first
 # without taking into account the congestion.
-STATIONARY_RATIO = float(os.getenv("STATIONARY_RATIO", 20))
+STATIONARY_RATIO = float(os.getenv("STATIONARY_RATIO", 0.95))
 
 # STATIONARY_THRESHOLD: After that threshold we take into account
 # the congestion values
@@ -65,6 +71,7 @@ class Vehicle:
     """
 
     start_nid: "int"
+    current_shortest_path_idx: "int"
     shortest_path: "list[int]"
 
 
@@ -93,6 +100,13 @@ class VehicleRouterStrategy:
     RANDOM_WALK = 1
 
 
+@dataclass
+class Simulation:
+    R: "float"
+    congestion: "float"
+    occupation_rates: "list[int]"
+
+
 class VehicleRouter:
     """
     VehicleRouter is the main class responsible in managing the
@@ -100,9 +114,12 @@ class VehicleRouter:
     step and all vehicles and nodes.
     """
 
-    def __init__(self, g: "nx.Graph", strategy=VEHICLE_ROUTER_STRATEGY) -> "None":
-        self.nodes: "list[Node]" = []
+    def __init__(
+        self, g: "nx.Graph", r: "float", strategy=VEHICLE_ROUTER_STRATEGY
+    ) -> "None":
+        self.nodes: "dict[str, Node]" = {}
         self.g = g
+        self.r = r
         self.strategy = strategy
 
         # to reduce latency we cache up-front all the neigbors
@@ -110,9 +127,9 @@ class VehicleRouter:
         for nid in g.nodes():
             if len(list(g.neighbors(nid))) == 0:
                 continue
-            self.nodes.append(Node(nid=nid, neighbors=[], queue=deque()))
+            self.nodes[str(nid)] = Node(nid=nid, neighbors=[], queue=deque())
 
-        for node in self.nodes:
+        for node in self.nodes.values():
             node.neighbors = self.get_node_neighbors(node)
 
     def generate_vehicles(self, node: "Node") -> "int":
@@ -120,11 +137,12 @@ class VehicleRouter:
         generates a number of cars selected with poisson distribution
         for a given node.
         """
-        num_vehicles = poisson(lam=R)
+        num_vehicles = poisson(lam=self.r)
         for _ in range(num_vehicles):
             node.queue.append(
                 Vehicle(
                     start_nid=node.nid,
+                    current_shortest_path_idx=-1,
                     shortest_path=self.generate_shortest_path(node),
                 )
             )
@@ -137,10 +155,16 @@ class VehicleRouter:
         """
         shortest_path_not_found = True
         while shortest_path_not_found:
-            end_node: "Node" = random.choice(self.nodes)
+            end_node_nid: "Node" = random.choice([k for k in self.nodes.keys()])
+            end_node = self.nodes[str(end_node_nid)]
             # make sure that end_node differs from start node
             while end_node.nid == start_node.nid:
-                end_node = random.choice(self.nodes)
+                end_node_nid: "Node" = random.choice([k for k in self.nodes.keys()])
+                end_node = self.nodes[str(end_node_nid)]
+
+            # random walk does not need shortest path
+            if self.strategy == VehicleRouterStrategy.RANDOM_WALK:
+                return [end_node]
 
             try:
                 shortest_path = nx.shortest_path(
@@ -155,46 +179,36 @@ class VehicleRouter:
 
         return shortest_path
 
-    def congestion(self, timestep_updates: "list[int]") -> "float":
-        """
-        the congestion metric eta / R * N
-        """
-        return float(np.mean(timestep_updates) / (R * len(self.nodes)))
-
     def timestep(self) -> "float":
         """
         runs a single timestep for the network
         """
-        timestep_updates: "list[int]" = []
-        for node in self.nodes:
+        timestep_updates: "int" = 0
+        for node in self.nodes.values():
             # don't process nodes with no neighbors
             if not node.has_neighbors:
                 continue
 
             routes_started = self.generate_vehicles(node)
             routes_ended = self.process(node)
-            timestep_updates.append(routes_started - routes_ended)
+            timestep_updates += routes_started - routes_ended
 
-        return self.congestion(timestep_updates)
+        return timestep_updates
 
     def get_node_neighbors(self, node: "Node") -> "list[Node]":
         """
         returns the Node classes which are neighbors according
         to the nx graph
         """
-        return [
-            self.nodes[i]
-            for i, n in enumerate(self.nodes)
-            if n.nid in self.g.neighbors(node.nid)
-        ]
+        return [n for n in self.nodes.values() if n.nid in self.g.neighbors(node.nid)]
 
-    def get_next_node(self, shortest_path: "list[int]", nid: "int") -> "Node":
+    def get_next_node(self, vehicle: "Vehicle") -> "Node":
         """
         returns the next Node for the given shortest path according
         to the given (current) nid
         """
-        next_nid = shortest_path[shortest_path.index(nid) + 1]
-        return [node for node in self.nodes if node.nid == next_nid][0]
+        vehicle.current_shortest_path_idx += 1
+        return self.nodes[str(vehicle.shortest_path[vehicle.current_shortest_path_idx])]
 
     def process(self, node: "Node") -> "int":
         """
@@ -203,6 +217,8 @@ class VehicleRouter:
         """
         routes_ended = 0
         for _ in range(T):
+            if len(node.queue) == 0:
+                continue
             vehicle = node.queue.popleft()
             if vehicle.shortest_path[-1] == node.nid:
                 routes_ended += 1
@@ -211,7 +227,7 @@ class VehicleRouter:
                     random_neighbor = random.choice(node.neighbors)
                     random_neighbor.queue.append(vehicle)
                 else:  # VehicleRouterStrategy.SHORTEST_PATH
-                    next_node = self.get_next_node(vehicle.shortest_path, node.nid)
+                    next_node = self.get_next_node(vehicle)
                     next_node.queue.append(vehicle)
         return routes_ended
 
@@ -234,14 +250,100 @@ def load_map_graph(
     return final_graph
 
 
+def create_scatter_plot(
+    occupation_rates: "list[int]", node_betweenness_list: "list[float]"
+) -> "None":
+    plt.figure(figsize=(10, 6))
+    plt.scatter(node_betweenness_list, occupation_rates)
+    plt.xlabel("Node Betweenness Centrality")
+    plt.ylabel("Node Occupation Rate (vehicles/timestep)")
+    plt.title("Traffic Load vs. Betweenness Centrality")
+    plt.savefig(f"fig-betweeness-r{r}")
+
+
+def create_eta_vs_rho_plot(
+    simulations: "list[Simulation]",
+    max_betweenness: "float",
+    num_nodes: "int",
+) -> "None":
+    """
+    creates a plot showing eta (congestion) versus rho (R) for different simulations
+    """
+    r_values = [sim.R for sim in simulations]
+    eta_values = [sim.congestion for sim in simulations]
+
+    # theoretical critical point according to paper
+    rho_c = T * (num_nodes - 1) / (max_betweenness + 2 * (num_nodes - 1))
+
+    plt.axvline(x=rho_c, color="g", linestyle="--", label=f"ρc ≈ {rho_c:.3f}")
+    plt.legend()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(r_values, eta_values, "o-", markersize=6)
+    plt.axhline(y=0, color="r", linestyle="--", alpha=0.5)
+
+    plt.xlabel("ρ (Vehicle Generation Rate)")
+    plt.ylabel("η (Congestion)")
+    plt.title("Phase Diagram: η vs ρ")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f"eta_vs_rho_phase_diagram_{ROUTING_STRATEGY}.png", dpi=300)
+    plt.show()
+
+
 if __name__ == "__main__":
-    router = VehicleRouter(g=load_map_graph())
+    simulations: "list[Simulation]" = []
+    g = load_map_graph()
+    node_betweenness = nx.betweenness_centrality(g, normalized=True, weight=None)
+    edge_betweenness = nx.edge_betweenness_centrality(g, normalized=True, weight=None)
 
-    for step in range(NUM_TIMESTEPS):
-        logger.info(f"main:: Running timestep: {step}")
-        current_congestion = router.timestep()
-        if step >= STATIONARY_THRESHOLD:
-            logger.info(f"main:: congestion: {current_congestion}")
+    # get the number of random r values
+    r_values = sorted([np.random.choice(R_VALUES) for _ in range(COUNT_R_VALUES)])
 
-        else:
-            logger.info("main:: not in stationary state yet. skipping..")
+    for r in r_values:
+        # initialize metrics per repetition
+        rep_congestion: "list[float]" = []
+
+        for rep in range(1):
+            logger.info(
+                f"settings:\n\tREP: {rep}\n\tRHO:{r}\n\tTAU:{T}\n\t",
+                f"NUM_TIMESTEPS: {NUM_TIMESTEPS}\n\tROUTING_STRATEGY: {ROUTING_STRATEGY}",
+            )
+            router = VehicleRouter(g=g, r=r)
+            increments: "list[int]" = []
+
+            for step in range(NUM_TIMESTEPS):
+                timestep_increment = router.timestep()
+                if step >= STATIONARY_THRESHOLD:
+                    logger.info(
+                        f"main:: Running timestep: {step} | timestep increment: {timestep_increment}"
+                    )
+                    increments.append(timestep_increment)
+                else:
+                    logger.info(
+                        f"main:: Running timestep: {step} | not in stationary state yet. skipping..."
+                    )
+            congestion = np.mean(timestep_increment) / (r * len(router.nodes.keys()))
+            logger.info(f"main:: average congestion {congestion}")
+
+            occupation_rates: "list[int]" = []
+            for nid, node in router.nodes.items():
+                occupation_rates.append(len(node.queue))
+
+            # append values for this repetition
+            rep_congestion.append(congestion)
+
+        simulations.append(
+            Simulation(
+                R=r,
+                congestion=float(np.mean(rep_congestion)),
+                occupation_rates=occupation_rates,
+            )
+        )
+
+    node_betweenness_list: "list[float]" = []
+    for nid, node in router.nodes.items():
+        node_betweenness_list.append(node_betweenness[int(nid)])
+
+    create_scatter_plot(occupation_rates, node_betweenness_list)
+    create_eta_vs_rho_plot(simulations, max(node_betweenness.values()), len(g.nodes()))
