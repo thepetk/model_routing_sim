@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger("logger")
 
 # CITY: The chosen city that the graph represents
-CITY = "San Cristóbal de La Laguna, Canary Islands, Spain"
+CITY = os.getenv("CITY", "San Cristóbal de La Laguna, Canary Islands, Spain")
 
 # DEFAULT_ROUTING_STRATEGY: ["shortest"/"random"] selects the routing strategy
 # for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"].
@@ -32,10 +32,10 @@ def get_vehicle_router_strategy(raw_routing_strategy: "str") -> "int":
 DEFAULT_VEHICLE_ROUTER_STRATEGY = get_vehicle_router_strategy(DEFAULT_ROUTING_STRATEGY)
 
 # NUM_TIMESTEPS: The number of total timesteps
-NUM_TIMESTEPS = int(os.getenv("NUM_TOTAL_TIMESTEPS", 1000))
+NUM_TIMESTEPS = int(os.getenv("NUM_TIMESTEPS", 1000))
 
 # OX_LOG_CONSOLE: [1/0] If 1 osmnx will log everything.
-OX_LOG_CONSOLE = bool(os.getenv("OX_LOG_CONSOLE", 0))
+OX_LOG_CONSOLE = bool(int(os.getenv("OX_LOG_CONSOLE", 0)))
 
 # OX_USE_CACHE: [1/0] If 1 osmnx will use cache.
 OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
@@ -47,7 +47,7 @@ R = int(os.getenv("RHO", 20))
 
 # STATIONARY_RATIO: The ratio of the timesteps that have to run first
 # without taking into account the congestion.
-STATIONARY_RATIO = 0.20
+STATIONARY_RATIO = float(os.getenv("STATIONARY_RATIO", 20))
 
 # STATIONARY_THRESHOLD: After that threshold we take into account
 # the congestion values

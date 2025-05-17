@@ -6,6 +6,10 @@ help: ## Show this help
 install: ## Installs oblit
 	 pip install -e .
 
+.PHONY: run
+ruff: ## Run the simulation
+	python src/main.py
+
 .PHONY: ruff
 ruff: ## Run ruff for formatting and linting
 	uv run ruff check --fix
