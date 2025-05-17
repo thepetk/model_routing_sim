@@ -32,7 +32,7 @@ OX_LOG_CONSOLE = bool(int(os.getenv("OX_LOG_CONSOLE", 0)))
 # OX_USE_CACHE: [1/0] If 1 osmnx will use cache.
 OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
 
-# R: The average entrance of vehicles in the network
+# R_VALUES: The average entrance of vehicles in the network
 # per time step per node.
 R_VALUES = np.arange(0.01, 1, 0.01)
 
