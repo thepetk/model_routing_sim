@@ -19,18 +19,6 @@ logger = logging.getLogger("logger")
 # CITY: The chosen city that the graph represents
 CITY = os.getenv("CITY", "San Cristóbal de La Laguna, Canary Islands, Spain")
 
-# DEFAULT_ROUTING_STRATEGY: ["shortest"/"random"] selects the routing strategy
-# for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"].
-DEFAULT_ROUTING_STRATEGY = os.getenv("DEFAULT_ROUTER_STRATEGY", "random")
-
-
-def get_vehicle_router_strategy(raw_routing_strategy: "str") -> "int":
-    return 0 if raw_routing_strategy == "shortest" else 1
-
-
-# DEFAULT_VEHICLE_ROUTER_STRATEGY: Is the interpretation of the DEFAULT_ROUTING_STRATEGY
-DEFAULT_VEHICLE_ROUTER_STRATEGY = get_vehicle_router_strategy(DEFAULT_ROUTING_STRATEGY)
-
 # NUM_TIMESTEPS: The number of total timesteps
 NUM_TIMESTEPS = int(os.getenv("NUM_TIMESTEPS", 1000))
 
@@ -44,6 +32,18 @@ OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
 # R: The average entrance of vehicles in the network
 # per time step per node.
 R = int(os.getenv("RHO", 20))
+
+# ROUTING_STRATEGY: ["shortest"/"random"] selects the routing strategy
+# for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"].
+ROUTING_STRATEGY = os.getenv("ROUTING_STRATEGY", "random")
+
+
+def get_vehicle_router_strategy(raw_routing_strategy: "str") -> "int":
+    return 0 if raw_routing_strategy == "shortest" else 1
+
+
+# VEHICLE_ROUTER_STRATEGY: Is the interpretation of the ROUTING_STRATEGY
+VEHICLE_ROUTER_STRATEGY = get_vehicle_router_strategy(ROUTING_STRATEGY)
 
 # STATIONARY_RATIO: The ratio of the timesteps that have to run first
 # without taking into account the congestion.
@@ -100,9 +100,7 @@ class VehicleRouter:
     step and all vehicles and nodes.
     """
 
-    def __init__(
-        self, g: "nx.Graph", strategy=DEFAULT_VEHICLE_ROUTER_STRATEGY
-    ) -> "None":
+    def __init__(self, g: "nx.Graph", strategy=VEHICLE_ROUTER_STRATEGY) -> "None":
         self.nodes: "list[Node]" = []
         self.g = g
         self.strategy = strategy

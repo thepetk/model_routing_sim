@@ -7,7 +7,7 @@ install: ## Installs oblit
 	 pip install -e .
 
 .PHONY: run
-ruff: ## Run the simulation
+run: ## Run the simulation
 	python src/main.py
 
 .PHONY: ruff

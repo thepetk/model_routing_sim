@@ -43,16 +43,16 @@ make run
 
 However the script is fairly configurable from many perspectives. That said we have a list of variables that one could adjust according to their needs:
 
-| Name                       | Description                                                                                                                                  | Type    | Default                      |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- |
-| `CITY`                     | The chosen city that the graph represents                                                                                                    | `str`   | "San Cristóbal de La Laguna" |
-| `DEFAULT_ROUTING_STRATEGY` | ["shortest"/"random"] selects the routing strategy for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"] | `str`   | "random"                     |
-| `NUM_TIMESTEPS`            | The number of total timesteps that the network will run                                                                                      | `int`   | 1000                         |
-| `OX_LOG_CONSOLE`           | An `osmnx` setting to make its output verbose or not [0/1]                                                                                   | `int`   | 0                            |
-| `OX_USE_CACHE`             | An `osmnx` setting to use cache or not [0/1]                                                                                                 | `int`   | 1                            |
-| `RHO`                      | The average entrance of vehicles in the network per time step per node                                                                       | `int`   | 20                           |
-| `STATIONARY_RATIO`         | The ratio of the timesteps that have to run first without taking into account the congestion.                                                | `float` | 0.20                         |
-| `TAU`                      | The number of vehicles a node can process per timestep                                                                                       | `int`   | 5                            |
+| Name               | Description                                                                                                                                  | Type    | Default                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- |
+| `CITY`             | The chosen city that the graph represents                                                                                                    | `str`   | "San Cristóbal de La Laguna" |
+| `NUM_TIMESTEPS`    | The number of total timesteps that the network will run                                                                                      | `int`   | 1000                         |
+| `OX_LOG_CONSOLE`   | An `osmnx` setting to make its output verbose or not [0/1]                                                                                   | `int`   | 0                            |
+| `OX_USE_CACHE`     | An `osmnx` setting to use cache or not [0/1]                                                                                                 | `int`   | 1                            |
+| `RHO`              | The average entrance of vehicles in the network per time step per node                                                                       | `int`   | 20                           |
+| `ROUTING_STRATEGY` | ["shortest"/"random"] selects the routing strategy for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"] | `str`   | "random"                     |
+| `STATIONARY_RATIO` | The ratio of the timesteps that have to run first without taking into account the congestion.                                                | `float` | 0.20                         |
+| `TAU`              | The number of vehicles a node can process per timestep                                                                                       | `int`   | 5                            |
 
 ## Contributions
 
