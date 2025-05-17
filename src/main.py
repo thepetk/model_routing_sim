@@ -1,5 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
+import logging
 import os
 import random
 from collections import deque
@@ -10,14 +11,35 @@ import numpy as np
 import osmnx as ox
 from numpy.random import poisson
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("logger")
+
 # CITY: The chosen city that the graph represents
 CITY = "San Cristóbal de La Laguna, Canary Islands, Spain"
 
-# NUM_NODES: The number of nodes of the network
-NUM_NODES = int(os.getenv("NUM_NODES", 50))
+# DEFAULT_ROUTING_STRATEGY: ["shortest"/"random"] selects the routing strategy
+# for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"].
+DEFAULT_ROUTING_STRATEGY = os.getenv("DEFAULT_ROUTER_STRATEGY", "random")
+
+
+def get_vehicle_router_strategy(raw_routing_strategy: "str") -> "int":
+    return 0 if raw_routing_strategy == "shortest" else 1
+
+
+# DEFAULT_VEHICLE_ROUTER_STRATEGY: Is the interpretation of the DEFAULT_ROUTING_STRATEGY
+DEFAULT_VEHICLE_ROUTER_STRATEGY = get_vehicle_router_strategy(DEFAULT_ROUTING_STRATEGY)
 
 # NUM_TIMESTEPS: The number of total timesteps
 NUM_TIMESTEPS = int(os.getenv("NUM_TOTAL_TIMESTEPS", 1000))
+
+# OX_LOG_CONSOLE: [1/0] If 1 osmnx will log everything.
+OX_LOG_CONSOLE = bool(os.getenv("OX_LOG_CONSOLE", 0))
+
+# OX_USE_CACHE: [1/0] If 1 osmnx will use cache.
+OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
+
 
 # R: The average entrance of vehicles in the network
 # per time step per node.
@@ -36,21 +58,14 @@ STATIONARY_THRESHOLD = int(NUM_TIMESTEPS * STATIONARY_RATIO)
 T = int(os.getenv("TAU", 5))
 
 
+@dataclass
 class Vehicle:
     """
     vehicle represents a item inside the network.
     """
 
-    def __init__(self, start_node_idx: "int") -> "None":
-        self.start_node_idx = start_node_idx
-        self.end_node_idx = self._generate_end_node_idx()
-        self.current_node_idx = start_node_idx
-
-    def _generate_end_node_idx(self) -> "int":
-        end_node_idx = random.choice(range(NUM_NODES))
-        while end_node_idx == self.start_node_idx:
-            end_node_idx = random.choice(range(NUM_NODES))
-        return end_node_idx
+    start_nid: "int"
+    shortest_path: "list[int]"
 
 
 @dataclass
@@ -61,76 +76,155 @@ class Node:
 
     nid: "int"
     neighbors: "list[Node]"
-    queue: "deque[Vehicle]" = deque()
-
-    def generate_vehicles(self) -> "int":
-        num_vehicles = poisson(lam=R)
-        for _ in range(num_vehicles):
-            self.queue.append(
-                Vehicle(
-                    start_node_idx=self.nid,
-                )
-            )
-        return num_vehicles
+    queue: "deque[Vehicle]"
 
     @property
     def has_neighbors(self) -> "bool":
         return len(self.neighbors) > 0
 
 
+class VehicleRouterStrategy:
+    SHORTEST_PATH = 0
+    RANDOM_WALK = 1
+
+
 class VehicleRouter:
-    def __init__(self, g: "nx.Graph") -> "None":
+    def __init__(
+        self, g: "nx.Graph", strategy=DEFAULT_VEHICLE_ROUTER_STRATEGY
+    ) -> "None":
         self.nodes: "list[Node]" = []
         self.g = g
+        self.strategy = strategy
         for nid in g.nodes():
-            self.nodes.append(Node(nid=nid, neighbors=[]))
+            if len(list(g.neighbors(nid))) == 0:
+                continue
+            self.nodes.append(Node(nid=nid, neighbors=[], queue=deque()))
 
         for node in self.nodes:
             node.neighbors = self.get_node_neighbors(node)
 
+    def generate_vehicles(self, node: "Node") -> "int":
+        """
+        generates a number of cars selected with poisson distribution
+        for a given node.
+        """
+        num_vehicles = poisson(lam=R)
+        for _ in range(num_vehicles):
+            node.queue.append(
+                Vehicle(
+                    start_nid=node.nid,
+                    shortest_path=self.generate_shortest_path(node),
+                )
+            )
+        return num_vehicles
+
+    def generate_shortest_path(self, start_node: "Node") -> "list[int]":
+        """
+        picks a random end_node in the graph and generates the
+        shortest path starting from the given start Node.
+        """
+        shortest_path_not_found = True
+        while shortest_path_not_found:
+            end_node: "Node" = random.choice(self.nodes)
+            # make sure that end_node differs from start node
+            while end_node.nid == start_node.nid:
+                end_node = random.choice(self.nodes)
+
+            try:
+                shortest_path = nx.shortest_path(
+                    self.g, source=start_node.nid, target=end_node.nid
+                )
+                shortest_path_not_found = False
+            except nx.exception.NetworkXNoPath as e:  # type: ignore
+                logger.debug(f"VehicleRouter:: {str(e)}")
+                pass
+
+        return shortest_path
+
     def congestion(self, timestep_updates: "list[int]") -> "float":
-        return float(np.mean(timestep_updates) / (R * NUM_NODES))
+        """
+        the congestion metric eta / R * N
+        """
+        return float(np.mean(timestep_updates) / (R * len(self.nodes)))
 
     def timestep(self) -> "float":
+        """
+        runs a single timestep for the network
+        """
         timestep_updates: "list[int]" = []
         for node in self.nodes:
             if not node.has_neighbors:
                 continue
-            routes_started = node.generate_vehicles()
+            routes_started = self.generate_vehicles(node)
             routes_ended = self.process(node)
             timestep_updates.append(routes_started - routes_ended)
         return self.congestion(timestep_updates)
 
     def get_node_neighbors(self, node: "Node") -> "list[Node]":
+        """
+        returns the Node classes which are neighbors according
+        to the nx graph
+        """
         return [
             self.nodes[i]
-            for i, n in enumerate(self.g.nodes())
-            if n in self.g.neighbors(node.nid)
+            for i, n in enumerate(self.nodes)
+            if n.nid in self.g.neighbors(node.nid)
         ]
 
+    def get_next_node(self, shortest_path: "list[int]", nid: "int") -> "Node":
+        """
+        returns the next Node for the given shortest path according
+        to the given (current) nid
+        """
+        next_nid = shortest_path[shortest_path.index(nid) + 1]
+        return [node for node in self.nodes if node.nid == next_nid][0]
+
     def process(self, node: "Node") -> "int":
+        """
+        processes all vehicles for a given node based on the
+        router's strategy
+        """
         routes_ended = 0
         for _ in range(T):
             vehicle = node.queue.popleft()
-            if vehicle.end_node_idx == node.nid:
+            if vehicle.shortest_path[-1] == node.nid:
                 routes_ended += 1
             else:
-                random_neighbor = random.choice(node.neighbors)
-                random_neighbor.queue.append(vehicle)
+                if self.strategy == VehicleRouterStrategy.RANDOM_WALK:
+                    random_neighbor = random.choice(node.neighbors)
+                    random_neighbor.queue.append(vehicle)
+                else:  # VehicleRouterStrategy.SHORTEST_PATH
+                    next_node = self.get_next_node(vehicle.shortest_path, node.nid)
+                    next_node.queue.append(vehicle)
         return routes_ended
 
 
-def load_map_graph(city=CITY, network_type="drive") -> "nx.Graph":
-    ox.config(use_cache=True, log_console=True)  # type: ignore
-    return ox.graph_from_place(city, network_type=network_type)
+def load_map_graph(
+    city=CITY, network_type="drive", log_console=OX_LOG_CONSOLE, use_cache=OX_USE_CACHE
+) -> "nx.Graph":
+    """
+    load_map_graph uses osmnx to load a given map and returns its
+    biggest connected component.
+    """
+    logger.info(f"main:: Load map for city: {city}")
+    ox.settings.use_cache = use_cache  # type: ignore
+    ox.settings.log_console = log_console  # type: ignore
+    initial_graph = ox.graph_from_place(city, network_type=network_type)
+    largest_cc = max(nx.weakly_connected_components(initial_graph), key=len)
+    final_graph: "nx.Graph" = initial_graph.subgraph(largest_cc).copy()  # type: ignore
+    logger.info(f"main:: Map loaded successfully: num_nodes={len(final_graph.nodes())}")
+
+    return final_graph
 
 
 if __name__ == "__main__":
-    G = load_map_graph()
-
-    router = VehicleRouter(g=G)
+    router = VehicleRouter(g=load_map_graph())
 
     for step in range(NUM_TIMESTEPS):
+        logger.info(f"main:: Running timestep: {step}")
         current_congestion = router.timestep()
-        # if step >= STATIONARY_THRESHOLD:
-        print(current_congestion)
+        if step >= STATIONARY_THRESHOLD:
+            logger.info(f"main:: congestion: {current_congestion}")
+
+        else:
+            logger.info("main:: not in stationary state yet. skipping..")
