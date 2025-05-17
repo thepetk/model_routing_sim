@@ -251,14 +251,14 @@ def load_map_graph(
 
 
 def create_scatter_plot(
-    occupation_rates: "list[int]", node_betweenness_list: "list[float]"
+    simulation: "Simulation", node_betweenness_list: "list[float]"
 ) -> "None":
     plt.figure(figsize=(10, 6))
-    plt.scatter(node_betweenness_list, occupation_rates)
+    plt.scatter(node_betweenness_list, simulation.occupation_rates)
     plt.xlabel("Node Betweenness Centrality")
     plt.ylabel("Node Occupation Rate (vehicles/timestep)")
     plt.title("Traffic Load vs. Betweenness Centrality")
-    plt.savefig(f"fig-betweeness-r{r}.png")
+    plt.savefig(f"fig-betweeness-r{simulation.R}.png")
 
 
 def create_eta_vs_rho_plot(
@@ -345,5 +345,6 @@ if __name__ == "__main__":
     for nid, node in router.nodes.items():
         node_betweenness_list.append(node_betweenness[int(nid)])
 
-    create_scatter_plot(occupation_rates, node_betweenness_list)
+    for simulation in simulations:
+        create_scatter_plot(simulation, node_betweenness_list)
     create_eta_vs_rho_plot(simulations, max(node_betweenness.values()), len(g.nodes()))
