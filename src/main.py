@@ -304,7 +304,7 @@ if __name__ == "__main__":
         # initialize metrics per repetition
         rep_congestion: "list[float]" = []
 
-        for rep in range(1):
+        for rep in range(R_REPETITIONS):
             logger.info(
                 f"settings:\n\tREP: {rep}\n\tRHO:{r}\n\tTAU:{T}\n\t"
                 + f"NUM_TIMESTEPS: {NUM_TIMESTEPS}\n\tROUTING_STRATEGY: {ROUTING_STRATEGY}",
