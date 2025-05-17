@@ -1,0 +1,17 @@
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      - id: ruff
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: "Ty type check"
+        language: python
+        types: [python]
+        stages: [pre-commit]
+        entry: uvx ty check --ignore unresolved-import
+        description: Run ty type checking on all Python files
