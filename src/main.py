@@ -83,6 +83,7 @@ class Node:
 
     nid: "int"
     neighbors: "list[Node]"
+    descendants: "list[Node]"
     queue: "deque[Vehicle]"
 
     @property
@@ -114,12 +115,9 @@ class VehicleRouter:
     step and all vehicles and nodes.
     """
 
-    def __init__(
-        self, g: "nx.Graph", r: "float", strategy=VEHICLE_ROUTER_STRATEGY
-    ) -> "None":
+    def __init__(self, g: "nx.Graph", strategy=VEHICLE_ROUTER_STRATEGY) -> "None":
         self.nodes: "dict[str, Node]" = {}
         self.g = g
-        self.r = r
         self.strategy = strategy
 
         # to reduce latency we cache up-front all the neigbors
@@ -127,17 +125,20 @@ class VehicleRouter:
         for nid in g.nodes():
             if len(list(g.neighbors(nid))) == 0:
                 continue
-            self.nodes[str(nid)] = Node(nid=nid, neighbors=[], queue=deque())
+            self.nodes[str(nid)] = Node(
+                nid=nid, neighbors=[], descendants=[], queue=deque()
+            )
 
         for node in self.nodes.values():
             node.neighbors = self.get_node_neighbors(node)
+            node.descendants = self.get_node_descendants(node)
 
-    def generate_vehicles(self, node: "Node") -> "int":
+    def generate_vehicles(self, node: "Node", r: "float") -> "int":
         """
         generates a number of cars selected with poisson distribution
         for a given node.
         """
-        num_vehicles = poisson(lam=self.r)
+        num_vehicles = poisson(lam=r)
         for _ in range(num_vehicles):
             node.queue.append(
                 Vehicle(
@@ -153,33 +154,25 @@ class VehicleRouter:
         picks a random end_node in the graph and generates the
         shortest path starting from the given start Node.
         """
-        shortest_path_not_found = True
-        while shortest_path_not_found:
-            end_node_nid: "Node" = random.choice([k for k in self.nodes.keys()])
-            end_node = self.nodes[str(end_node_nid)]
-            # make sure that end_node differs from start node
-            while end_node.nid == start_node.nid:
-                end_node_nid: "Node" = random.choice([k for k in self.nodes.keys()])
-                end_node = self.nodes[str(end_node_nid)]
+        end_node: "Node" = random.choice(start_node.descendants)
+        # make sure that end_node differs from start node
+        while end_node.nid == start_node.nid:
+            end_node: "Node" = random.choice(start_node.descendants)
 
-            # random walk does not need shortest path
-            if self.strategy == VehicleRouterStrategy.RANDOM_WALK:
-                return [end_node]
+        # random walk does not need shortest path
+        if self.strategy == VehicleRouterStrategy.RANDOM_WALK:
+            return [end_node]
 
-            try:
-                shortest_path = nx.shortest_path(
-                    self.g, source=start_node.nid, target=end_node.nid
-                )
-                shortest_path_not_found = False
+        return nx.shortest_path(self.g, source=start_node.nid, target=end_node.nid)
 
-            # TODO: Fixme - Need to ensure we are using connected graphs
-            except nx.exception.NetworkXNoPath as e:  # type: ignore
-                logger.debug(f"VehicleRouter:: {str(e)}")
-                pass
+    def reset(self) -> "None":
+        """
+        reset all nodes
+        """
+        for node in self.nodes.values():
+            node.queue = deque()
 
-        return shortest_path
-
-    def timestep(self) -> "float":
+    def timestep(self, r: "float") -> "float":
         """
         runs a single timestep for the network
         """
@@ -189,11 +182,19 @@ class VehicleRouter:
             if not node.has_neighbors:
                 continue
 
-            routes_started = self.generate_vehicles(node)
+            routes_started = self.generate_vehicles(node, r)
             routes_ended = self.process(node)
             timestep_updates += routes_started - routes_ended
 
         return timestep_updates
+
+    def get_node_descendants(self, node: "Node") -> "list[Node]":
+        """
+        returns the Node classes which are descendants according
+        to the nx graph
+        """
+        descendants = nx.descendants(self.g, node.nid)
+        return [n for n in self.nodes.values() if n.nid in descendants]
 
     def get_node_neighbors(self, node: "Node") -> "list[Node]":
         """
@@ -299,21 +300,22 @@ if __name__ == "__main__":
 
     # get the number of random r values
     r_values = sorted([np.random.choice(R_VALUES) for _ in range(COUNT_R_VALUES)])
+    router = VehicleRouter(g=g)
 
     for r in r_values:
         # initialize metrics per repetition
         rep_congestion: "list[float]" = []
 
         for rep in range(R_REPETITIONS):
+            router.reset()
             logger.info(
                 f"settings:\n\tREP: {rep}\n\tRHO:{r}\n\tTAU:{T}\n\t"
                 + f"NUM_TIMESTEPS: {NUM_TIMESTEPS}\n\tROUTING_STRATEGY: {ROUTING_STRATEGY}",
             )
-            router = VehicleRouter(g=g, r=r)
             increments: "list[int]" = []
 
             for step in range(NUM_TIMESTEPS):
-                timestep_increment = router.timestep()
+                timestep_increment = router.timestep(r)
                 if step >= STATIONARY_THRESHOLD:
                     logger.info(
                         f"main:: Running timestep: {step} | timestep increment: {timestep_increment}"
