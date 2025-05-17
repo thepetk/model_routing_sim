@@ -46,7 +46,6 @@ However the script is fairly configurable from many perspectives. That said we h
 | Name               | Description                                                                                                                                  | Type    | Default                      |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- |
 | `CITY`             | The chosen city that the graph represents                                                                                                    | `str`   | "San Cristóbal de La Laguna" |
-| `COUNT_R_VALUES`   | The number of R values                                                                                                                       | `int`   | 20                           |
 | `NUM_TIMESTEPS`    | The number of total timesteps that the network will run                                                                                      | `int`   | 1000                         |
 | `OX_LOG_CONSOLE`   | An `osmnx` setting to make its output verbose or not [0/1]                                                                                   | `int`   | 0                            |
 | `OX_USE_CACHE`     | An `osmnx` setting to use cache or not [0/1]                                                                                                 | `int`   | 1                            |

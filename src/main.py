@@ -20,9 +20,6 @@ logger = logging.getLogger("logger")
 # CITY: The chosen city that the graph represents
 CITY = os.getenv("CITY", "San Cristóbal de La Laguna, Canary Islands, Spain")
 
-# COUNT_R_VALUES: The number of R values
-COUNT_R_VALUES = int(os.getenv("COUNT_R_VALUES", 20))
-
 # NUM_TIMESTEPS: The number of total timesteps
 NUM_TIMESTEPS = int(os.getenv("NUM_TIMESTEPS", 1000))
 
@@ -32,9 +29,9 @@ OX_LOG_CONSOLE = bool(int(os.getenv("OX_LOG_CONSOLE", 0)))
 # OX_USE_CACHE: [1/0] If 1 osmnx will use cache.
 OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
 
-# R_VALUES: The average entrance of vehicles in the network
-# per time step per node.
-R_VALUES = np.arange(0.01, 1, 0.01)
+# R_VALUES: A list of numbers of average entrance of vehicles
+# in the network per time step per node.
+R_VALUES = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.8, 1]
 
 # R_REPETITIONS: The number of repetitions per R value
 R_REPETITIONS = int(os.getenv("R_REPETITIONS", 10))
@@ -299,10 +296,9 @@ if __name__ == "__main__":
     edge_betweenness = nx.edge_betweenness_centrality(g, normalized=True, weight=None)
 
     # get the number of random r values
-    r_values = sorted([np.random.choice(R_VALUES) for _ in range(COUNT_R_VALUES)])
     router = VehicleRouter(g=g)
 
-    for r in r_values:
+    for r in R_VALUES:
         # initialize metrics per repetition
         rep_congestion: "list[float]" = []
 
