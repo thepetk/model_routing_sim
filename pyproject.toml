@@ -1,0 +1,19 @@
+[project]
+name = "mode_routing_sim"
+version = "0.1.0"
+description = "An example model of routing in complex networks with nodes that have limited capacity, showing congestion"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["networkx>=3.4.2", "numpy>=2.2.5", "osmnx>=2.0.3"]
+
+[dependency-groups]
+dev = ["ruff>=0.11.2", "ty>=0.0.1a1"]
+
+[tool.ruff]
+line-length = 89
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
