@@ -306,8 +306,8 @@ if __name__ == "__main__":
 
         for rep in range(1):
             logger.info(
-                f"settings:\n\tREP: {rep}\n\tRHO:{r}\n\tTAU:{T}\n\t",
-                f"NUM_TIMESTEPS: {NUM_TIMESTEPS}\n\tROUTING_STRATEGY: {ROUTING_STRATEGY}",
+                f"settings:\n\tREP: {rep}\n\tRHO:{r}\n\tTAU:{T}\n\t"
+                + f"NUM_TIMESTEPS: {NUM_TIMESTEPS}\n\tROUTING_STRATEGY: {ROUTING_STRATEGY}",
             )
             router = VehicleRouter(g=g, r=r)
             increments: "list[int]" = []
