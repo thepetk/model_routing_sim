@@ -258,7 +258,7 @@ def create_scatter_plot(
     plt.xlabel("Node Betweenness Centrality")
     plt.ylabel("Node Occupation Rate (vehicles/timestep)")
     plt.title("Traffic Load vs. Betweenness Centrality")
-    plt.savefig(f"fig-betweeness-r{r}")
+    plt.savefig(f"fig-betweeness-r{r}.png")
 
 
 def create_eta_vs_rho_plot(
