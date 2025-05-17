@@ -61,7 +61,7 @@ T = int(os.getenv("TAU", 5))
 @dataclass
 class Vehicle:
     """
-    vehicle represents a item inside the network.
+    vehicle represents a item (package) inside the network.
     """
 
     start_nid: "int"
@@ -71,7 +71,7 @@ class Vehicle:
 @dataclass
 class Node:
     """
-    extends the graph's node with a queue.
+    structures the graph's node with a queue
     """
 
     nid: "int"
@@ -84,17 +84,31 @@ class Node:
 
 
 class VehicleRouterStrategy:
+    """
+    VehicleRouterStrategy is a helper class to
+    choose between different cases/strategies
+    """
+
     SHORTEST_PATH = 0
     RANDOM_WALK = 1
 
 
 class VehicleRouter:
+    """
+    VehicleRouter is the main class responsible in managing the
+    traffic inside the network. Is the one processing each time
+    step and all vehicles and nodes.
+    """
+
     def __init__(
         self, g: "nx.Graph", strategy=DEFAULT_VEHICLE_ROUTER_STRATEGY
     ) -> "None":
         self.nodes: "list[Node]" = []
         self.g = g
         self.strategy = strategy
+
+        # to reduce latency we cache up-front all the neigbors
+        # only applicable for the VehicleRouterStrategy.RANDOM_WALK
         for nid in g.nodes():
             if len(list(g.neighbors(nid))) == 0:
                 continue
@@ -135,6 +149,8 @@ class VehicleRouter:
                     self.g, source=start_node.nid, target=end_node.nid
                 )
                 shortest_path_not_found = False
+
+            # TODO: Fixme - Need to ensure we are using connected graphs
             except nx.exception.NetworkXNoPath as e:  # type: ignore
                 logger.debug(f"VehicleRouter:: {str(e)}")
                 pass
@@ -153,11 +169,14 @@ class VehicleRouter:
         """
         timestep_updates: "list[int]" = []
         for node in self.nodes:
+            # don't process nodes with no neighbors
             if not node.has_neighbors:
                 continue
+
             routes_started = self.generate_vehicles(node)
             routes_ended = self.process(node)
             timestep_updates.append(routes_started - routes_ended)
+
         return self.congestion(timestep_updates)
 
     def get_node_neighbors(self, node: "Node") -> "list[Node]":
