@@ -42,7 +42,7 @@ ROUTING_STRATEGY = os.getenv("ROUTING_STRATEGY", "random")
 
 
 def get_vehicle_router_strategy(raw_routing_strategy: "str") -> "int":
-    return 0 if raw_routing_strategy == "shortest" else 1
+    return 1 if raw_routing_strategy == "random" else 0
 
 
 # VEHICLE_ROUTER_STRATEGY: Is the interpretation of the ROUTING_STRATEGY
