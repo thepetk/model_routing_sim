@@ -31,14 +31,14 @@ OX_USE_CACHE = bool(int(os.getenv("OX_USE_CACHE", 1)))
 
 # R_VALUES: A list of numbers of average entrance of vehicles
 # in the network per time step per node.
-R_VALUES = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.8, 1]
+R_VALUES = [0.001, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.8, 1]
 
 # R_REPETITIONS: The number of repetitions per R value
 R_REPETITIONS = int(os.getenv("R_REPETITIONS", 10))
 
 # ROUTING_STRATEGY: ["shortest"/"random"] selects the routing strategy
 # for every vehicle. Defaults to "random" if not set or value not in ["shortest", "random"].
-ROUTING_STRATEGY = os.getenv("ROUTING_STRATEGY", "random")
+ROUTING_STRATEGY = os.getenv("ROUTING_STRATEGY", "shortest")
 
 
 def get_vehicle_router_strategy(raw_routing_strategy: "str") -> "int":
@@ -249,14 +249,15 @@ def load_map_graph(
 
 
 def create_scatter_plot(
-    simulation: "Simulation", node_betweenness_list: "list[float]"
+    simulation: "Simulation", betweenness_list: "list[float]", betweeness_type: "str"
 ) -> "None":
     plt.figure(figsize=(10, 6))
-    plt.scatter(node_betweenness_list, simulation.occupation_rates)
-    plt.xlabel("Node Betweenness Centrality")
+    plt.scatter(betweenness_list, simulation.occupation_rates)
+    plt.xlabel(f"{betweeness_type.capitalize()} Betweenness Centrality")
     plt.ylabel("Node Occupation Rate (vehicles/timestep)")
+    plt.yscale("log")
     plt.title("Traffic Load vs. Betweenness Centrality")
-    plt.savefig(f"fig-betweeness-r{simulation.R}.png")
+    plt.savefig(f"fig-{betweeness_type}-betweeness-r{simulation.R}.png")
 
 
 def create_eta_vs_rho_plot(
@@ -273,11 +274,11 @@ def create_eta_vs_rho_plot(
     # theoretical critical point according to paper
     rho_c = T * (num_nodes - 1) / (max_betweenness + 2 * (num_nodes - 1))
 
-    plt.axvline(x=rho_c, color="g", linestyle="--", label=f"ρc ≈ {rho_c:.3f}")
     plt.legend()
 
     plt.figure(figsize=(10, 6))
     plt.plot(r_values, eta_values, "o-", markersize=6)
+    plt.axvline(x=rho_c, color="g", linestyle="--", label=f"ρc ≈ {rho_c:.3f}")
     plt.axhline(y=0, color="r", linestyle="--", alpha=0.5)
 
     plt.xlabel("ρ (Vehicle Generation Rate)")
@@ -292,8 +293,7 @@ def create_eta_vs_rho_plot(
 if __name__ == "__main__":
     simulations: "list[Simulation]" = []
     g = load_map_graph()
-    node_betweenness = nx.betweenness_centrality(g, normalized=True, weight=None)
-    edge_betweenness = nx.edge_betweenness_centrality(g, normalized=True, weight=None)
+    node_betweenness = nx.betweenness_centrality(g, normalized=False, weight=None)
 
     # get the number of random r values
     router = VehicleRouter(g=g)
@@ -344,5 +344,8 @@ if __name__ == "__main__":
         node_betweenness_list.append(node_betweenness[int(nid)])
 
     for simulation in simulations:
-        create_scatter_plot(simulation, node_betweenness_list)
-    create_eta_vs_rho_plot(simulations, max(node_betweenness.values()), len(g.nodes()))
+        create_scatter_plot(simulation, node_betweenness_list, "node")
+
+    create_eta_vs_rho_plot(
+        simulations, max(node_betweenness.values()), len(router.nodes)
+    )
